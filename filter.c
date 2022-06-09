@@ -2,15 +2,26 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <string.h>
+
 #include "helpers.h"
 
 int main(int argc, char *argv[])
 {
     // Define allowable filters
-    char *filters = "begr";
+    char *filters = "be:d:t";
 
     // Get filter flag and check validity
     char filter = getopt(argc, argv, filters);
+
+    int crypto_mode = 0;
+    if (strcmp(optarg,"ecb") == 0) {
+        crypto_mode = 0;
+    }
+    else if (strcmp(optarg,"cbc") == 0) {
+        crypto_mode = 1;
+    }
+
     if (filter == '?')
     {
         printf("Invalid filter.\n");
@@ -105,19 +116,18 @@ int main(int argc, char *argv[])
             blur(height, width, image);
             break;
 
-        // Edges
+        // Encrypt
         case 'e':
-            edges(height, width, image);
+            encrypt(height, width, image, crypto_mode);
             break;
 
-        // Grayscale
-        case 'g':
-            grayscale(height, width, image);
+        // Decrypt
+        case 'd':
+            decrypt(height, width, image, crypto_mode);
             break;
 
-        // Reflect
-        case 'r':
-            reflect(height, width, image);
+        case 't':
+            test_aes();
             break;
     }
 

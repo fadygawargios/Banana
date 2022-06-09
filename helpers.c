@@ -1,11 +1,184 @@
 #include "helpers.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
+
+#include <openssl/aes.h>
+#include <openssl/rand.h>
 
 #define RED_COLOR 1
 #define GREEN_COLOR 2
 #define BLUE_COLOR 3
+
+#define MIN(a,b) \
+   ({ __typeof__ (a) _a = (a); \
+       __typeof__ (b) _b = (b); \
+     _a < _b ? _a : _b; })
+
+
+BYTE aes_key[AES_BLOCK_SIZE] = {0,23,3,4,15,6,7,28,9,10,113,12,13,14,15,16};
+BYTE iv[AES_BLOCK_SIZE] = {2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32};
+
+//Function Prototypes
+static int get_blur(int pxl_row, int pxl_col, int height, int width, 
+                    RGBTRIPLE image[height][width], int COLOR);
+
+void test_aes(void) 
+{
+    AES_KEY enc_key, dec_key;
+    //                           1234567890123456
+    unsigned char plaintext[AES_BLOCK_SIZE]; //Set to 16 bytes
+    unsigned char ciphertext[AES_BLOCK_SIZE]; //Set to 16 bytes
+    unsigned char decryptText[AES_BLOCK_SIZE]; //Set to 16 bytes
+    int i;
+
+
+    AES_set_encrypt_key(aes_key, 128, &enc_key); 
+    AES_set_decrypt_key(aes_key, 128, &dec_key);
+
+    printf("Encryption Key: ");
+    for (i = 0; i < AES_BLOCK_SIZE/4; i++) {
+        printf("%X ",enc_key.rd_key[i]);
+    }
+    printf("\nDecryption Key: ");
+    for (i = 0; i < AES_BLOCK_SIZE/4; i++) {
+        printf("%X ",dec_key.rd_key[i]);
+    }
+    
+    
+    plaintext[10] = 'a';
+    plaintext[11] = 0x5;
+    plaintext[12] = 0x5;
+    plaintext[13] = 0x5;
+    plaintext[14] = 0x5;
+    plaintext[15] = 0x5;
+    printf("\nplaintext: ");
+    for (i = 0; i < AES_BLOCK_SIZE; i++) {
+        printf("%X ",plaintext[i]);
+    }
+    printf("\nCiphertext: ");
+    AES_encrypt(&plaintext[0], &ciphertext[0], &enc_key);
+    for (i = 0; i < AES_BLOCK_SIZE; i++) {
+        printf("%X ",ciphertext[i]);
+    }
+
+    printf("\ndecryText: ");
+    AES_decrypt(&ciphertext[0], &decryptText[0], &dec_key);
+    for (i = 0; i < AES_BLOCK_SIZE; i++) {
+        printf("%X ",decryptText[i]);
+    }    
+    printf("\nplaintext: ");
+    AES_decrypt(&ciphertext[0], &decryptText[0], &dec_key);
+    for (i = 0; i < AES_BLOCK_SIZE; i++) {
+        printf("%X ",plaintext[i]);
+    }
+    printf("\n");
+
+    
+    plaintext[0] = 'a';
+    printf("\nplaintext: ");
+    for (i = 0; i < AES_BLOCK_SIZE; i++) {
+        printf("%X ",plaintext[i]);
+    }
+    printf("\nCiphertext: ");
+    AES_encrypt(&plaintext[0], &ciphertext[0], &enc_key);
+    for (i = 0; i < AES_BLOCK_SIZE; i++) {
+        printf("%X ",ciphertext[i]);
+    }
+
+    printf("\ndecryText: ");
+    AES_decrypt(&ciphertext[0], &decryptText[0], &dec_key);
+    for (i = 0; i < AES_BLOCK_SIZE; i++) {
+        printf("%X ",decryptText[i]);
+    }    
+    printf("\nplaintext: ");
+    AES_decrypt(&ciphertext[0], &decryptText[0], &dec_key);
+    for (i = 0; i < AES_BLOCK_SIZE; i++) {
+        printf("%X ",plaintext[i]);
+    }
+    printf("\n");
+}
+
+void encrypt(int height, int width, RGBTRIPLE image[height][width], int mode) 
+{
+    /* generate a key with a given length */
+    AES_KEY enc_key, dec_key;
+    unsigned char plaintext[AES_BLOCK_SIZE]; //Set to 16 bytes
+    unsigned char ciphertext[AES_BLOCK_SIZE]; //Set to 16 bytes
+    
+    BYTE *byte = (BYTE*)&image[0][0]; 
+    int total_pixels = height*width*3;
+    int i = 0;
+
+    AES_set_encrypt_key(aes_key, 128, &enc_key); 
+    AES_set_decrypt_key(aes_key, 128, &dec_key);
+
+    for (int pxl = 0; pxl < total_pixels; pxl += MIN(AES_BLOCK_SIZE, total_pixels-pxl)) {
+        for (i = 0; i < AES_BLOCK_SIZE; i++) {
+            if (total_pixels - pxl < i) {
+                plaintext[i] = 0;
+            }
+            else {
+                plaintext[i] = *(byte+i);
+            }
+        }
+
+
+        if (mode == 0 ) {
+            AES_ecb_encrypt(&plaintext[0], &ciphertext[0], &enc_key, AES_ENCRYPT);
+        }
+        else if (mode == 1) {
+		    AES_cbc_encrypt(&plaintext[0], &ciphertext[0], AES_BLOCK_SIZE, &enc_key, iv, AES_ENCRYPT);
+        }
+
+        for (i = 0; i < MIN(AES_BLOCK_SIZE, total_pixels-pxl); i++) {
+            *byte = ciphertext[i];
+            byte++;
+        }
+    }
+    return;
+}
+
+
+void decrypt(int height, int width, RGBTRIPLE image[height][width], int mode) 
+{
+    /* generate a key with a given length */
+    AES_KEY enc_key, dec_key;
+    unsigned char plaintext[AES_BLOCK_SIZE]; //Set to 16 bytes
+    unsigned char ciphertext[AES_BLOCK_SIZE]; //Set to 16 bytes
+
+    BYTE *byte = (BYTE*)&image[0][0]; 
+    int total_pixels = height*width*3;
+    int i = 0;
+
+    AES_set_encrypt_key(aes_key, 128, &enc_key); 
+    AES_set_decrypt_key(aes_key, 128, &dec_key);
+
+    for (int pxl = 0; pxl < total_pixels; pxl += MIN(AES_BLOCK_SIZE, total_pixels-pxl)) {
+        for (i = 0; i < AES_BLOCK_SIZE; i++) {
+            if (total_pixels - pxl < i) {
+                ciphertext[i] = 0;
+            }
+            else {
+                ciphertext[i] = *(byte+i);
+            }
+        }
+        
+        if (mode == 0 ) {
+            AES_ecb_encrypt(&ciphertext[0], &plaintext[0], &dec_key, AES_DECRYPT);
+        }
+        else if (mode == 1) {
+            AES_cbc_encrypt(&ciphertext[0], &plaintext[0], AES_BLOCK_SIZE, &enc_key, iv, AES_DECRYPT);
+        }
+
+        for (i = 0; i < MIN(AES_BLOCK_SIZE, total_pixels-pxl); i++) {
+            *byte = plaintext[i];
+            byte++;
+        }
+    }
+    return;
+}
 
 // Convert image to grayscale
 void grayscale(int height, int width, RGBTRIPLE image[height][width])
@@ -54,14 +227,9 @@ void reflect(int height, int width, RGBTRIPLE image[height][width])
     return;
 }
 
-    // Function prototype: SEND HELP
-int get_blur(int i, int j, int height, int width, RGBTRIPLE image[height][width], int COLOR)
-
 // Blur image
 void blur(int height, int width, RGBTRIPLE image[height][width])
 {
-
-
     RGBTRIPLE copy[height][width];
 
     for (int row = 0; row < height; row++)
@@ -77,25 +245,29 @@ void blur(int height, int width, RGBTRIPLE image[height][width])
         for (int column = 0; column < width; column++)
         {
             // BUG HERE
-            image[row][column].rgbtRed = get_blur(row, column, height, width, copy[height][width], RED_COLOR);
-            image[row][column].rgbtGreen = get_blur(row, column, height, width, copy[height][width], GREEN_COLOR);
-            image[row][column].rgbtBlue = get_blur(row, column, height, width, copy[height][width], BLUE_COLOR);
+            image[row][column].rgbtRed = get_blur(row, column, height, width, copy, RED_COLOR);
+            image[row][column].rgbtGreen = get_blur(row, column, height, width, copy, GREEN_COLOR);
+            image[row][column].rgbtBlue = get_blur(row, column, height, width, copy, BLUE_COLOR);
         }
     }
     return;
 }
 
-    int get_blur(int i, int j, int height, int width, RGBTRIPLE image[height][width], int COLOR)
-    {
+static int get_blur(int pxl_row, int pxl_col, int height, int width, RGBTRIPLE image[height][width], int COLOR)
+{
     int average = 0;
     int total = 0;
     int sum = 0;
 
-    for (int row = i - 1; row <= (i + 1); i++)
+    for (int row = pxl_row - 1; row <= (pxl_row + 1); row++)
     {
-        for (int column = j - 1; column <= (j + 1); j++)
+        if (row < 0 || row >= height) 
         {
-            if (row < 0 || row >= height || column < 0 || column >= width)
+            continue;
+        }
+        for (int column = pxl_col - 1; column <= (pxl_col + 1); column++)
+        {
+            if (column < 0 || column >= width)
             {
                 continue;
             }
@@ -117,10 +289,11 @@ void blur(int height, int width, RGBTRIPLE image[height][width])
             total++;
         }
     }
-
-    average = round(sum / total);
-    return average;
+    if (total != 0) {
+        average = round(sum / total);
     }
+    return average;
+}
 
 
 // Detect edges
